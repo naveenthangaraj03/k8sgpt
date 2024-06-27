@@ -28,6 +28,7 @@ import (
 	networkv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	gtwapi "sigs.k8s.io/gateway-api/apis/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type IAnalyzer interface {
@@ -62,6 +63,7 @@ type PreAnalysis struct {
 	GatewayClass             gtwapi.GatewayClass
 	Gateway                  gtwapi.Gateway
 	HTTPRoute                gtwapi.HTTPRoute
+	GatekeeperConstraint     []*unstructured.Unstructured
 	// Integrations
 	ScaledObject             keda.ScaledObject
 	TrivyVulnerabilityReport trivy.VulnerabilityReport
