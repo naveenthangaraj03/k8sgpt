@@ -30,14 +30,6 @@ type HpaAnalyzer struct{}
 func (HpaAnalyzer) Analyze(a common.Analyzer) ([]common.Result, error) {
 
 	kind := "HorizontalPodAutoscaler"
-	apiDoc := kubernetes.K8sApiReference{
-		Kind: kind,
-		ApiVersion: schema.GroupVersion{
-			Group:   "autoscaling",
-			Version: "v1",
-		},
-		OpenapiSchema: a.OpenapiSchema,
-	}
 
 	AnalyzerErrorsMetric.DeletePartialMatch(map[string]string{
 		"analyzer_name": kind,
@@ -64,77 +56,6 @@ func (HpaAnalyzer) Analyze(a common.Analyzer) ([]common.Result, error) {
 				})
 			}
 		}
-
-		// check ScaleTargetRef exist
-		scaleTargetRef := hpa.Spec.ScaleTargetRef
-		var podInfo PodInfo
-
-		switch scaleTargetRef.Kind {
-		case "Deployment":
-			deployment, err := a.Client.GetClient().AppsV1().Deployments(hpa.Namespace).Get(a.Context, scaleTargetRef.Name, metav1.GetOptions{})
-			if err == nil {
-				podInfo = DeploymentInfo{deployment}
-			}
-		case "ReplicationController":
-			rc, err := a.Client.GetClient().CoreV1().ReplicationControllers(hpa.Namespace).Get(a.Context, scaleTargetRef.Name, metav1.GetOptions{})
-			if err == nil {
-				podInfo = ReplicationControllerInfo{rc}
-			}
-		case "ReplicaSet":
-			rs, err := a.Client.GetClient().AppsV1().ReplicaSets(hpa.Namespace).Get(a.Context, scaleTargetRef.Name, metav1.GetOptions{})
-			if err == nil {
-				podInfo = ReplicaSetInfo{rs}
-			}
-		case "StatefulSet":
-			ss, err := a.Client.GetClient().AppsV1().StatefulSets(hpa.Namespace).Get(a.Context, scaleTargetRef.Name, metav1.GetOptions{})
-			if err == nil {
-				podInfo = StatefulSetInfo{ss}
-			}
-		default:
-			failures = append(failures, common.Failure{
-				Text:      fmt.Sprintf("HorizontalPodAutoscaler uses %s as ScaleTargetRef which is not an option.", scaleTargetRef.Kind),
-				Sensitive: []common.Sensitive{},
-			})
-		}
-
-		if podInfo == nil {
-			doc := apiDoc.GetApiDocV2("spec.scaleTargetRef")
-
-			failures = append(failures, common.Failure{
-				Text:          fmt.Sprintf("HorizontalPodAutoscaler uses %s/%s as ScaleTargetRef which does not exist.", scaleTargetRef.Kind, scaleTargetRef.Name),
-				KubernetesDoc: doc,
-				Sensitive: []common.Sensitive{
-					{
-						Unmasked: scaleTargetRef.Name,
-						Masked:   util.MaskString(scaleTargetRef.Name),
-					},
-				},
-			})
-		} else {
-			containers := len(podInfo.GetPodSpec().Containers)
-			for _, container := range podInfo.GetPodSpec().Containers {
-				if container.Resources.Requests == nil || container.Resources.Limits == nil {
-					containers--
-				}
-			}
-
-			if containers <= 0 {
-				doc := apiDoc.GetApiDocV2("spec.scaleTargetRef.kind")
-
-				failures = append(failures, common.Failure{
-					Text:          fmt.Sprintf("%s %s/%s does not have resource configured.", scaleTargetRef.Kind, a.Namespace, scaleTargetRef.Name),
-					KubernetesDoc: doc,
-					Sensitive: []common.Sensitive{
-						{
-							Unmasked: scaleTargetRef.Name,
-							Masked:   util.MaskString(scaleTargetRef.Name),
-						},
-					},
-				})
-			}
-
-		}
-
 		if len(failures) > 0 {
 			preAnalysis[fmt.Sprintf("%s/%s", hpa.Namespace, hpa.Name)] = common.PreAnalysis{
 				HorizontalPodAutoscalers: hpa,
@@ -160,44 +81,4 @@ func (HpaAnalyzer) Analyze(a common.Analyzer) ([]common.Result, error) {
 	}
 
 	return a.Results, nil
-}
-
-type PodInfo interface {
-	GetPodSpec() corev1.PodSpec
-}
-
-type DeploymentInfo struct {
-	*appsv1.Deployment
-}
-
-func (d DeploymentInfo) GetPodSpec() corev1.PodSpec {
-	return d.Spec.Template.Spec
-}
-
-// define a structure for ReplicationController
-type ReplicationControllerInfo struct {
-	*corev1.ReplicationController
-}
-
-func (rc ReplicationControllerInfo) GetPodSpec() corev1.PodSpec {
-	return rc.Spec.Template.Spec
-}
-
-// define a structure for ReplicaSet
-type ReplicaSetInfo struct {
-	*appsv1.ReplicaSet
-}
-
-func (rs ReplicaSetInfo) GetPodSpec() corev1.PodSpec {
-	return rs.Spec.Template.Spec
-}
-
-// define a structure for StatefulSet
-type StatefulSetInfo struct {
-	*appsv1.StatefulSet
-}
-
-// implement PodInfo for StatefulSetInfo
-func (ss StatefulSetInfo) GetPodSpec() corev1.PodSpec {
-	return ss.Spec.Template.Spec
 }
