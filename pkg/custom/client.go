@@ -30,9 +30,11 @@ func NewClient(c Connection) (*Client, error) {
 	}, nil
 }
 
-func (cli *Client) Run() (common.Result, error) {
+func (cli *Client) Run(filter string) (common.Result, error) {
 	var result common.Result
-	req := &schemav1.RunRequest{}
+	req := &schemav1.RunRequest{
+		Filter: filter,
+	}
 	res, err := cli.analyzerClient.Run(context.Background(), req)
 	if err != nil {
 		return result, err

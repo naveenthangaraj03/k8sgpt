@@ -275,7 +275,22 @@ func (a *Analysis) RunCustomAnalysis() {
 			fmt.Printf("Debug: Found custom analyzers %v.\n", cAnalyzerNames)
 		}
 	}
-	for _, cAnalyzer := range customAnalyzers {
+
+	analyzersToRun := customAnalyzers
+	if len(a.Filters) != 0 {
+		filterSet := make(map[string]bool)
+		for _, f := range a.Filters {
+			filterSet[f] = true
+		}
+		analyzersToRun = nil
+		for _, ca := range customAnalyzers {
+			if filterSet[ca.Name] {
+				analyzersToRun = append(analyzersToRun, ca)
+			}
+		}
+	}
+
+	for _, cAnalyzer := range analyzersToRun {
 		wg.Add(1)
 		semaphore <- struct{}{}
 		go func(analyzer custom.CustomAnalyzer, wg *sync.WaitGroup, semaphore chan struct{}) {
@@ -291,7 +306,7 @@ func (a *Analysis) RunCustomAnalysis() {
 				fmt.Printf("Debug: %s launched.\n", cAnalyzer.Name)
 			}
 
-			result, err := canClient.Run()
+			result, err := canClient.Run(cAnalyzer.Name)
 			if result.Kind == "" {
 				// for custom analyzer name, we must use a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.',
 				//and must start and end with an alphanumeric character (e.g. 'example.com',
